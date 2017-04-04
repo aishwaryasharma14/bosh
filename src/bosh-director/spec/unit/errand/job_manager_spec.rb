@@ -19,9 +19,14 @@ module Bosh::Director
     let(:instance2) { instance_double('Bosh::Director::DeploymentPlan::Instance', model: instance2_model) }
     let(:vm1) { instance_double('Bosh::Director::DeploymentPlan::Vm', clean: nil) }
 
+    let(:task) {Bosh::Director::Models::Task.make(:id => 42, :username => 'user')}
+    let(:task_writer) {Bosh::Director::TaskDBWriter.new(:event_output, task.id)}
+    let(:event_log) {Bosh::Director::EventLog::Log.new(task_writer)}
+
     before do
       fake_app
       allow(job).to receive(:needed_instance_plans).with(no_args).and_return([instance_plan1, instance_plan2])
+      allow(Bosh::Director::Config).to receive(:event_log).and_return(event_log)
     end
 
     describe '#update' do
@@ -47,7 +52,8 @@ module Bosh::Director
       let(:instance1_model) do
         is = Models::Instance.make(deployment: deployment_model, job: 'foo-job', uuid: 'instance_id1', index: 0, ignore: true)
         is.add_vm vm1_model
-        is.update(active_vm: vm1_model)
+        is.active_vm = vm1_model
+        is
       end
       let(:instance2_model) do
         Models::Instance.make(deployment: deployment_model, job: 'foo-job', uuid: 'instance_id2', index: 1, ignore: true, state: 'detached')
@@ -78,7 +84,7 @@ module Bosh::Director
 
           subject.delete_vms
 
-          expect(instance1_model.active_vm_id).to be_nil
+          expect(instance1_model.active_vm).to be_nil
         end
       end
 

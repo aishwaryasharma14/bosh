@@ -115,6 +115,8 @@ module Bosh::Director::Models
     description { Sham.description }
     result      { nil }
     output      { nil }
+    result_output { nil }
+    event_output { nil }
   end
 
   User.blueprint do
@@ -129,7 +131,7 @@ module Bosh::Director::Models
       vm = Vm.make
       is = Instance.make
       is.add_vm vm
-      is.update(active_vm: vm)
+      is.active_vm = vm
     end
   end
 

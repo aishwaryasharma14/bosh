@@ -14,7 +14,7 @@ module Bosh::Director
 
     def reboot_vm(instance)
       cloud = cloud_factory.for_availability_zone(instance.availability_zone)
-      cloud.reboot_vm(instance.active_vm.cid)
+      cloud.reboot_vm(instance.vm_cid)
       begin
         agent_client(instance.credentials, instance.agent_id).wait_until_ready
       rescue Bosh::Director::RpcTimeout
@@ -26,7 +26,7 @@ module Bosh::Director
 
     def delete_vm(instance)
       # Paranoia: don't blindly delete VMs with persistent disk
-      disk_list = agent_timeout_guard(instance.active_vm.cid, instance.credentials, instance.agent_id) { |agent| agent.list_disk }
+      disk_list = agent_timeout_guard(instance.vm_cid, instance.credentials, instance.agent_id) { |agent| agent.list_disk }
       if disk_list.size != 0
         handler_error('VM has persistent disk attached')
       end
@@ -36,7 +36,7 @@ module Bosh::Director
 
     def delete_vm_reference(instance)
       vm_model = instance.active_vm
-      instance.update(active_vm: nil)
+      instance.active_vm = nil
       vm_model.delete
     end
 
@@ -71,9 +71,9 @@ module Bosh::Director
 
       apply_spec = instance_plan_to_create.existing_instance.spec
       apply_spec['networks'].each do |network_name, network|
-        index_dns_name = dns_manager.dns_record_name(instance_model.index, instance_model.job, network_name, instance_model.deployment.name)
+        index_dns_name = Bosh::Director::DnsNameGenerator.dns_record_name(instance_model.index, instance_model.job, network_name, instance_model.deployment.name)
         dns_names_to_ip[index_dns_name] = network['ip']
-        id_dns_name = dns_manager.dns_record_name(instance_model.uuid, instance_model.job, network_name, instance_model.deployment.name)
+        id_dns_name = Bosh::Director::DnsNameGenerator.dns_record_name(instance_model.uuid, instance_model.job, network_name, instance_model.deployment.name)
         dns_names_to_ip[id_dns_name] = network['ip']
       end
 

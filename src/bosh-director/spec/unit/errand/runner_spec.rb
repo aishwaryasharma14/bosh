@@ -2,10 +2,17 @@ require 'spec_helper'
 
 module Bosh::Director
   describe Errand::Runner do
-    subject { described_class.new(instance, 'fake-job-name', result_file, instance_manager, logs_fetcher) }
-    let(:result_file) { instance_double('Bosh::Director::TaskResultFile') }
+    subject { described_class.new(instance, 'fake-job-name', task_result, instance_manager, logs_fetcher) }
     let(:instance_manager) { Bosh::Director::Api::InstanceManager.new }
     let(:logs_fetcher) { instance_double('Bosh::Director::LogsFetcher') }
+    let(:event_log) {Bosh::Director::EventLog::Log.new(task_writer)}
+    let(:task) {Bosh::Director::Models::Task.make(:id => 42, :username => 'user')}
+    let(:task_writer) {Bosh::Director::TaskDBWriter.new(:event_output, task.id)}
+    let(:task_result) { Bosh::Director::TaskDBWriter.new(:result_output, task.id) }
+    before  do
+      allow(Bosh::Director::Config).to receive(:event_log).and_return(event_log)
+      allow(Bosh::Director::Config).to receive(:result).and_return(task_result)
+    end
 
     context 'when there is at least 1 instance' do
       let(:instance) do
@@ -24,7 +31,8 @@ module Bosh::Director
           deployment: deployment,
         )
         is.add_vm vm_model
-        is.update(active_vm: vm_model)
+        is.active_vm = vm_model
+        is
       end
       let(:vm_model) { Models::Vm.make(agent_id: 'agent-id') }
 
@@ -40,8 +48,6 @@ module Bosh::Director
         before { allow(event_log_stage).to receive(:advance_and_track).and_yield }
 
         context 'when agent is able to run errands' do
-          before { allow(Config).to receive(:result).and_return(result_file) }
-          let(:result_file) { instance_double('File', write: nil) }
           let(:exit_code) { 0 }
           let(:agent_task_result) do
             {
@@ -76,7 +82,7 @@ module Bosh::Director
           end
 
           it 'writes run_errand response with exit_code, stdout, stderr and logs result to task result file' do
-            expect(result_file).to receive(:write) do |text|
+            expect(task_result).to receive(:write) do |text|
               expect(JSON.parse(text)).to eq(
                 'exit_code' => 0,
                 'stdout' => 'fake-stdout',
@@ -165,7 +171,7 @@ module Bosh::Director
           end
 
           it 'writes run_errand response with nil fetched lobs blobstore id if fetching logs fails' do
-            expect(result_file).to receive(:write) do |text|
+            expect(task_result).to receive(:write) do |text|
               expect(JSON.parse(text)).to eq(
                 'exit_code' => 0,
                 'stdout' => 'fake-stdout',
@@ -198,7 +204,7 @@ module Bosh::Director
             end
 
             it 'writes the errand result received from the agent\'s cancellation' do
-              expect(result_file).to receive(:write) do |text|
+              expect(task_result).to receive(:write) do |text|
                 expect(JSON.parse(text)).to eq(
                   'exit_code' => 0,
                   'stdout' => 'fake-stdout',
@@ -217,7 +223,7 @@ module Bosh::Director
             end
 
             it 'writes run_errand response with nil blobstore_id if fetching logs fails' do
-              expect(result_file).to receive(:write) do |text|
+              expect(task_result).to receive(:write) do |text|
                 expect(JSON.parse(text)).to eq(
                   'exit_code' => 0,
                   'stdout' => 'fake-stdout',
@@ -243,7 +249,7 @@ module Bosh::Director
           end
 
           it 'does write run_errand agent response to result file because we did not run errand' do
-            expect(result_file).to_not receive(:write)
+            expect(task_result).to_not receive(:write)
             expect { subject.run }.to raise_error
           end
 
@@ -262,7 +268,7 @@ module Bosh::Director
           end
 
           it 'does write run_errand agent response to result file because there is was no response' do
-            expect(result_file).to_not receive(:write)
+            expect(task_result).to_not receive(:write)
             expect { subject.run }.to raise_error
           end
 
@@ -273,7 +279,7 @@ module Bosh::Director
         end
 
         context 'when job instance is not associated with any VM yet' do
-          before { instance_model.update(active_vm_id: nil) }
+          before { instance_model.active_vm = nil }
 
           it 'raises an error' do
             expect { subject.run }.to raise_error(InstanceVmMissing, "'fake-job-name/#{instance_model.uuid} (#{instance_model.index})' doesn't reference a VM")

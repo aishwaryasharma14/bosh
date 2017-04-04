@@ -696,7 +696,7 @@ module Bosh::Director
               instance = Models::Instance.create(instance_params)
               if i < 8
                 instance.add_vm(vm)
-                instance.update(active_vm: vm)
+                instance.active_vm = vm
               end
             end
 
@@ -706,7 +706,7 @@ module Bosh::Director
             body = JSON.parse(last_response.body)
             expect(body.size).to eq(8)
 
-            body.each_with_index do |instance_with_vm, i|
+            body.sort_by{|instance| instance['index']}.each_with_index do |instance_with_vm, i|
               expect(instance_with_vm).to eq(
                 'agent_id' => "agent-#{i}",
                 'job' => "job-#{i}",
@@ -742,7 +742,7 @@ module Bosh::Director
                 instance = Models::Instance.create(instance_params)
                 if i < 8
                   instance.add_vm(vm)
-                  instance.update(active_vm: vm)
+                  instance.active_vm = vm
                 end
 
                 ip_addresses_params  = {
@@ -759,7 +759,7 @@ module Bosh::Director
               body = JSON.parse(last_response.body)
               expect(body.size).to eq(8)
 
-              body.each_with_index do |instance_with_vm, i|
+              body.sort_by{|instance| instance['index']}.each_with_index do |instance_with_vm, i|
                 expect(instance_with_vm).to eq(
                   'agent_id' => "agent-#{i}",
                   'job' => "job-#{i}",
@@ -795,7 +795,7 @@ module Bosh::Director
                 instance = Models::Instance.create(instance_params)
                 if i < 8
                   instance.add_vm(vm)
-                  instance.update(active_vm: vm)
+                  instance.active_vm = vm
                 end
               end
 
@@ -805,7 +805,7 @@ module Bosh::Director
               body = JSON.parse(last_response.body)
               expect(body.size).to eq(8)
 
-              body.each_with_index do |instance_with_vm, i|
+              body.sort_by{|instance| instance['index']}.each_with_index do |instance_with_vm, i|
                 expect(instance_with_vm).to eq(
                   'agent_id' => "agent-#{i}",
                   'job' => "job-#{i}",
@@ -868,7 +868,7 @@ module Bosh::Director
               body = JSON.parse(last_response.body)
               expect(body.size).to eq(15)
 
-              body.each_with_index do |instance, i|
+              body.sort_by{|instance| instance['index']}.each_with_index do |instance, i|
                 expect(instance).to eq(
                                         'agent_id' => nil,
                                         'cid' => nil,
@@ -913,7 +913,7 @@ module Bosh::Director
                 body = JSON.parse(last_response.body)
                 expect(body.size).to eq(15)
 
-                body.each_with_index do |instance, i|
+                body.sort_by{|instance| instance['index']}.each_with_index do |instance, i|
                   expect(instance).to eq(
                                           'agent_id' => nil,
                                           'cid' => nil,
@@ -950,7 +950,7 @@ module Bosh::Director
                 body = JSON.parse(last_response.body)
                 expect(body.size).to eq(15)
 
-                body.each_with_index do |instance, i|
+                body.sort_by{|instance| instance['index']}.each_with_index do |instance, i|
                   expect(instance).to eq(
                                           'agent_id' => nil,
                                           'cid' => nil,
@@ -1281,6 +1281,7 @@ module Bosh::Director
             context 'authenticated access' do
               before do
                 authorize 'admin', 'admin'
+                Models::Deployment.make(name: 'errand')
                 release = Models::Release.make(name: 'bosh-release')
                 template1 = Models::Template.make(name: 'foobar', release: release)
                 template2 = Models::Template.make(name: 'errand1', release: release)

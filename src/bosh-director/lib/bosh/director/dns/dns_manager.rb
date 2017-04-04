@@ -6,9 +6,10 @@ module Bosh::Director
       logger = Config.logger
       canonized_dns_domain_name = Config.canonized_dns_domain_name
 
-      dns_publisher = BlobstoreDnsPublisher.new(App.instance.blobstores.blobstore, canonized_dns_domain_name) if Config.local_dns_enabled?
       dns_provider = PowerDns.new(canonized_dns_domain_name, logger) if !!Config.dns_db
 
+      blobstore = App.instance.blobstores.blobstore
+      dns_publisher = BlobstoreDnsPublisher.new(blobstore, canonized_dns_domain_name)
       DnsManager.new(canonized_dns_domain_name, dns_config, dns_provider, dns_publisher, logger)
     end
   end
@@ -22,7 +23,6 @@ module Bosh::Director
       @dns_domain_name = dns_domain_name
       @dns_provider = dns_provider
       @dns_publisher = dns_publisher
-      @default_server = dns_config['server']
       @flush_command = dns_config['flush_command']
       @ip_address = dns_config['address']
       @logger = logger
@@ -30,10 +30,6 @@ module Bosh::Director
 
     def dns_enabled?
       !@dns_provider.nil?
-    end
-
-    def publisher_enabled?
-      !@dns_publisher.nil?
     end
 
     def configure_nameserver
@@ -56,9 +52,7 @@ module Bosh::Director
       end
       dns_records = (current_dns_records + new_dns_records).uniq
       update_dns_records_for_instance_model(instance_model, dns_records)
-      if publisher_enabled?
-        create_or_delete_local_dns_record(instance_model)
-      end
+      create_or_delete_local_dns_record(instance_model)
     end
 
     def migrate_legacy_records(instance_model)
@@ -103,34 +97,10 @@ module Bosh::Director
           @logger.info("Removing DNS for: #{record_name}")
           @dns_provider.delete(record_name)
         end
-        update_dns_records_for_instance_model(instance_model, [])
       end
 
-      if publisher_enabled?
-        update_dns_records_for_instance_model(instance_model, [])
-        delete_local_dns_record(instance_model)
-      end
-    end
-
-    # build a list of dns servers to use
-    def dns_servers(network, dns_spec, add_default_dns = true)
-      servers = nil
-
-      if dns_spec
-        servers = []
-        dns_spec.each do |dns|
-          dns = NetAddr::CIDR.create(dns)
-          unless dns.size == 1
-            raise NetworkInvalidDns,
-              "Invalid DNS for network '#{network}': must be a single IP"
-          end
-
-          servers << dns.ip
-        end
-      end
-
-      return servers unless add_default_dns
-      add_default_dns_server(servers)
+      update_dns_records_for_instance_model(instance_model, [])
+      delete_local_dns_record(instance_model)
     end
 
     # Purge cached DNS records
@@ -147,17 +117,11 @@ module Bosh::Director
     end
 
     def publish_dns_records
-      if publisher_enabled?
-        dns_records = @dns_publisher.export_dns_records
-        @dns_publisher.publish(dns_records)
-        @dns_publisher.broadcast
-      end
+      @dns_publisher.publish_and_broadcast
     end
 
     def cleanup_dns_records
-      if publisher_enabled?
-        @dns_publisher.cleanup_blobs
-      end
+      @dns_publisher.cleanup_blobs
     end
 
     def find_dns_record_names_by_instance(instance_model)
@@ -165,14 +129,7 @@ module Bosh::Director
     end
 
     def dns_record_name(hostname, job_name, network_name, deployment_name)
-      network_name = Canonicalizer.canonicalize(network_name) unless network_name == '%'
-
-      [ hostname,
-        Canonicalizer.canonicalize(job_name),
-        network_name,
-        Canonicalizer.canonicalize(deployment_name),
-        @dns_domain_name
-      ].join('.')
+      Bosh::Director::DnsNameGenerator.dns_record_name(hostname, job_name, network_name, deployment_name)
     end
 
     def find_local_dns_record(instance_model)
@@ -214,11 +171,10 @@ module Bosh::Director
     private
 
     def insert_local_dns_record(instance_model, ip, name, network_name)
-      deleted_record = Models::LocalDnsRecord
-                         .where(:name => name, :instance_id => instance_model.id)
-                         .exclude(:ip => ip.to_s)
-                         .delete
-      insert_tombstone unless deleted_record == 0
+      Models::LocalDnsRecord
+          .where(:name => name, :instance_id => instance_model.id)
+          .exclude(:ip => ip.to_s)
+          .delete
       begin
         Models::LocalDnsRecord.create(
           :name => name,
@@ -256,16 +212,6 @@ module Bosh::Director
           end
         end
       end
-    end
-
-    # add default dns server to an array of dns servers
-    def add_default_dns_server(servers)
-      unless @default_server.to_s.empty? || @default_server == '127.0.0.1'
-        (servers ||= []) << @default_server
-        servers.uniq!
-      end
-
-      servers
     end
   end
 end

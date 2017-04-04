@@ -49,11 +49,15 @@ module Bosh::Director::Models
       return {} if tags.nil? || tags.empty?
 
       client = Bosh::Director::ConfigServer::ClientFactory.create(Bosh::Director::Config.logger).create_client
-      client.interpolate(tags, name, nil)
+      client.interpolate(tags, name, current_variable_set)
     end
 
     def current_variable_set
       variable_sets_dataset.order(Sequel.desc(:created_at)).limit(1).first
+    end
+
+    def last_successful_variable_set
+      variable_sets_dataset.where(deployed_successfully: true).order(Sequel.desc(:created_at)).limit(1).first
     end
   end
 

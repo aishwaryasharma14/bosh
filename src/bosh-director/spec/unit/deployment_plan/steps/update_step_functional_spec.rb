@@ -114,6 +114,8 @@ module Bosh::Director::DeploymentPlan
     let(:cloud) { Bosh::Director::Config.cloud }
 
     let(:task) { Bosh::Director::Models::Task.make(:id => 42, :username => 'user') }
+    let(:task_writer) {Bosh::Director::TaskDBWriter.new(:event_output, task.id)}
+    let(:event_log) {Bosh::Director::EventLog::Log.new(task_writer)}
     before do
       Bosh::Director::Models::VariableSet.make(deployment: deployment)
       allow(Bosh::Director::Config).to receive(:dns_enabled?).and_return(false)
@@ -121,6 +123,7 @@ module Bosh::Director::DeploymentPlan
       allow(Bosh::Director::Config).to receive(:current_job).and_return(base_job)
       allow(Bosh::Director::Config).to receive(:record_events).and_return(true)
       allow(Bosh::Director::Config).to receive(:name).and_return('fake-director-name')
+      allow(Bosh::Director::Config).to receive(:event_log).and_return(event_log)
     end
 
     before { allow(Bosh::Director::App).to receive_message_chain(:instance, :blobstores, :blobstore).and_return(blobstore) }
@@ -133,7 +136,8 @@ module Bosh::Director::DeploymentPlan
       let(:instance_model) do
         instance = Bosh::Director::Models::Instance.make(deployment: deployment)
         instance.add_vm(vm_model)
-        instance.update(active_vm: vm_model)
+        instance.active_vm = vm_model
+        instance
       end
       context 'the agent on the existing VM has the requested static ip but no job instance assigned (due to deploy failure)' do
         context 'the new deployment manifest specifies 1 instance of a job with a static ip' do
@@ -152,7 +156,7 @@ module Bosh::Director::DeploymentPlan
             expect(Bosh::Director::Models::Vm.find(cid: 'vm-cid-1')).to be_nil
             vm2 = Bosh::Director::Models::Vm.find(cid: 'vm-cid-2')
             expect(vm2).not_to be_nil
-            expect(Bosh::Director::Models::Instance.find(active_vm_id: vm2.id)).not_to be_nil
+            expect(Bosh::Director::Models::Instance.all.select { |i| i.active_vm = vm2 }.first).not_to be_nil
 
             expect(agent_client).to have_received(:drain).with('shutdown', {})
           end
@@ -178,7 +182,7 @@ module Bosh::Director::DeploymentPlan
         update_step.perform
 
         vm = Bosh::Director::Models::Vm.find(cid: 'vm-cid-2')
-        expect(Bosh::Director::Models::Instance.find(active_vm_id: vm.id).spec['lifecycle']).to eq('service')
+        expect(Bosh::Director::Models::Instance.all.select { |i| i.active_vm = vm }.first.spec['lifecycle']).to eq('service')
       end
     end
   end

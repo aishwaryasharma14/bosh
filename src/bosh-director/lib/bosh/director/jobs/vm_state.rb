@@ -17,12 +17,12 @@ module Bosh::Director
 
       def perform
         instances = Models::Instance.filter(:deployment_id => @deployment_id)
-        instances = instances.exclude(active_vm_id: nil) unless @state_for_missing_vms
+        instances = instances.reject { |i| i.active_vm.nil? } unless @state_for_missing_vms
         ThreadPool.new(:max_threads => Config.max_threads).wrap do |pool|
           instances.each do |instance|
             pool.process do
               vm_state = process_instance(instance)
-              result_file.write(vm_state.to_json + "\n")
+              task_result.write(vm_state.to_json + "\n")
             end
           end
         end

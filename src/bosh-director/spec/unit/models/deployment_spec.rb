@@ -63,11 +63,11 @@ tags:
         before do
           allow(Bosh::Director::ConfigServer::ClientFactory).to receive(:create).and_return(mock_client_factory)
           allow(mock_client_factory).to receive(:create_client).and_return(mock_client)
-          allow(mock_client).to receive(:interpolate).and_return(interpolated_tags)
+          VariableSet.make(id: 1, deployment: deployment)
         end
 
         it 'substitutes the variables in the tags section' do
-          expect(mock_client).to receive(:interpolate).with(tags, deployment.name, anything)
+          expect(mock_client).to receive(:interpolate).with(tags, deployment.name, deployment.current_variable_set).and_return(interpolated_tags)
           expect(deployment.tags).to eq(interpolated_tags)
         end
       end
@@ -116,6 +116,25 @@ tags:
       it 'returns the deployment current variable set' do
         expect(deployment_1.current_variable_set.id).to eq(3)
         expect(deployment_2.current_variable_set).to be_nil
+      end
+    end
+
+    describe '#last_successful_variable_set' do
+      let(:deployment_1) { Deployment.make(manifest: 'test') }
+      let(:deployment_2) { Deployment.make(manifest: 'vroom') }
+
+      before do
+        time = Time.now
+        VariableSet.make(id: 1, deployment: deployment_1, created_at: time + 1, deployed_successfully: true)
+        VariableSet.make(id: 2, deployment: deployment_1, created_at: time + 2, deployed_successfully: true)
+        VariableSet.make(id: 3, deployment: deployment_1, created_at: time + 3, deployed_successfully: true)
+        VariableSet.make(id: 4, deployment: deployment_1, created_at: time + 4, deployed_successfully: true)
+        VariableSet.make(id: 5, deployment: deployment_1, created_at: time + 5, deployed_successfully: false)
+      end
+
+      it 'returns the deployment current variable set' do
+        expect(deployment_1.last_successful_variable_set.id).to eq(4)
+        expect(deployment_2.last_successful_variable_set).to be_nil
       end
     end
   end
